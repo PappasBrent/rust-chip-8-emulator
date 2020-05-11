@@ -1,5 +1,8 @@
 // Documentation: http://devernay.free.fr/hacks/chip8/C8TECH10.HTM#2.5
 
+mod display;
+mod keyboard;
+
 #[allow(non_snake_case)]
 struct CPU {
     /// CHIP-8 CPU
@@ -40,10 +43,10 @@ struct CPU {
 
     /// 16-key hexadecimal keyboard
     /// Not sure if this is the best way to implement this
-    keyboard: [bool; 16],
+    keyboard: keyboard::Keyboard,
 
     /// 64x32-pixel monochrome display
-    display: [u8; 64 * 32],
+    display: display::Display,
 }
 
 impl CPU {
@@ -56,7 +59,7 @@ impl CPU {
     /// Executes the current cycle
     fn execute_cycle(&mut self) {
         let opcode = self.read_opcode();
-        self.process_opcode(&mut self, opcode);
+        self.process_opcode(opcode);
     }
 
     /// Processes the given opcode
@@ -85,11 +88,11 @@ impl CPU {
             // 0nnn - SYS addr
             // Jump to a machine code routine at nnn.
             // This instruction is only used on the old computers on which Chip-8 was originally implemented. It is ignored by modern interpreters.
-            0x0000..=0x0FFF => (),
+            // 0x0000..=0x0FFF => (),
 
             // 00E0 - CLS
             // Clear the display.
-            0x00E0 => self.display = [0u8; 64 * 32],
+            0x00E0 => self.display.cls(),
 
             // 00EE - RET
             // Return from a subroutine.
@@ -141,12 +144,14 @@ impl CPU {
                     self.PC += 2;
                 }
             }
+
             // 6xkk - LD Vx, byte
             // Set Vx = kk.
             // The interpreter puts the value kk into register Vx.
             0x6000..=0x6FFF => {
                 self.V[x] = kk as u8;
             }
+
             // 7xkk - ADD Vx, byte
             // Set Vx = Vx + kk.
             // Adds the value kk to the value of register Vx, then stores the result in Vx.
@@ -155,7 +160,70 @@ impl CPU {
             }
 
             0x8000..=0x8FFF => {
-                // TODO
+                match n {
+                    // 8xy0 - LD Vx, Vy
+                    // Set Vx = Vy.
+                    // Stores the value of register Vy in register Vx.
+                    0 => self.V[x] = vy,
+
+                    // 8xy1 - OR Vx, Vy
+                    // Set Vx = Vx OR Vy.
+                    // Performs a bitwise OR on the values of Vx and Vy, then stores the result in Vx.
+                    1 => self.V[x] |= vy,
+
+                    // 8xy2 - AND Vx, Vy
+                    // Set Vx = Vx AND Vy.
+                    // Performs a bitwise AND on the values of Vx and Vy, then stores the result in Vx.
+                    2 => self.V[x] &= vy,
+
+                    // 8xy3 - XOR Vx, Vy
+                    // Set Vx = Vx XOR Vy.
+                    // Performs a bitwise exclusive OR on the values of Vx and Vy, then stores the result in Vx.
+                    3 => self.V[x] ^= vy,
+
+                    // 8xy4 - ADD Vx, Vy
+                    // Set Vx = Vx + Vy, set VF = carry.
+                    // The values of Vx and Vy are added together. If the result is greater than 8 bits (i.e., > 255,) VF is set to 1, otherwise 0. Only the lowest 8 bits of the result are kept, and stored in Vx.
+                    4 => {
+                        self.V[0xF] = if vx > (255 - vy) { 1 } else { 0 };
+                        self.V[x] = (vx + vy) & 0x00FF;
+                    }
+
+                    // 8xy5 - SUB Vx, Vy
+                    // Set Vx = Vx - Vy, set VF = NOT borrow.
+                    // If Vx > Vy, then VF is set to 1, otherwise 0. Then Vy is subtracted from Vx, and the results stored in Vx.
+                    5 => {
+                        let (res, overflow) = vx.overflowing_sub(vy);
+                        self.V[0xF] = if overflow { 1 } else { 0 };
+                        self.V[x] = res;
+                    }
+                    // 8xy6 - SHR Vx {, Vy}
+                    // Set Vx = Vx SHR 1.
+                    // If the least-significant bit of Vx is 1, then VF is set to 1, otherwise 0. Then Vx is divided by 2.
+                    6 => {
+                        self.V[0xF] = vx & 0b1;
+                        self.V[x] >>= 1;
+                    }
+
+                    // 8xy7 - SUBN Vx, Vy
+                    // Set Vx = Vy - Vx, set VF = NOT borrow.
+                    // If Vy > Vx, then VF is set to 1, otherwise 0. Then Vx is subtracted from Vy, and the results stored in Vx.
+                    7 => {
+                        let (res, overflow) = vy.overflowing_sub(vx);
+                        self.V[0xF] = if overflow { 1 } else { 0 };
+                        self.V[x] = res;
+                    }
+
+                    // 8xyE - SHL Vx {, Vy}
+                    // Set Vx = Vx SHL 1.
+                    // If the most-significant bit of Vx is 1, then VF is set to 1, otherwise to 0. Then Vx is multiplied by 2.
+                    0xE => {
+                        self.V[0xF] = (vx & 0b10000000) >> 7;
+                        self.V[x] <<= 1;
+                    }
+
+                    _ => (),
+                }
             }
 
             // 9xy0 - SNE Vx, Vy
@@ -171,20 +239,26 @@ impl CPU {
             // Set I = nnn.
             // The value of register I is set to nnn.
             0xA000..=0xAFFF => self.I = nnn,
+
             // Bnnn - JP V0, addr
             // Jump to location nnn + V0.
             // The program counter is set to nnn plus the value of V0.
-            0xB000..=0xBFFF => self.PC = self.V[0usize] + nnn,
+            0xB000..=0xBFFF => self.PC = (self.V[0usize] as u16) + nnn,
+
             // Cxkk - RND Vx, byte
             // Set Vx = random byte AND kk.
             // The interpreter generates a random number from 0 to 255, which is then ANDed with the value kk. The results are stored in Vx. See instruction 8xy2 for more information on AND.
             0xC000..=0xCFFF => {
-                // TODO
+                let random_number = rand::random::<u8>();
+                self.V[x] = random_number & kk;
             }
 
             // Dxyn - DRW Vx, Vy, nibble
             // Display n-byte sprite starting at memory location I at (Vx, Vy), set VF = collision.
-            // The interpreter reads n bytes from memory, starting at the address stored in I. These bytes are then displayed as sprites on screen at coordinates (Vx, Vy). Sprites are XORed onto the existing screen. If this causes any pixels to be erased, VF is set to 1, otherwise it is set to 0. If the sprite is positioned so part of it is outside the coordinates of the display, it wraps around to the opposite side of the screen. See instruction 8xy3 for more information on XOR, and section 2.4, Display, for more information on the Chip-8 screen and sprites.
+            // The interpreter reads n bytes from memory, starting at the address stored in I. These bytes are then displayed as sprites on screen at coordinates (Vx, Vy).
+            // Sprites are XORed onto the existing screen. If this causes any pixels to be erased, VF is set to 1, otherwise it is set to 0.
+            // If the sprite is positioned so part of it is outside the coordinates of the display, it wraps around to the opposite side of the screen.
+            // See instruction 8xy3 for more information on XOR, and section 2.4, Display, for more information on the Chip-8 screen and sprites.
             0xD000..=0xDFFF => {
                 // TODO
             }
@@ -214,7 +288,7 @@ impl CPU {
                     // Fx07 - LD Vx, DT
                     // Set Vx = delay timer value.
                     // The value of DT is placed into Vx.
-                    0x07 => self.V[x] = (self.DT as u8),
+                    0x07 => self.V[x] = self.DT as u8,
 
                     // Fx0A - LD Vx, K
                     // Wait for a key press, store the value of the key in Vx.
@@ -226,17 +300,17 @@ impl CPU {
                     // Fx15 - LD DT, Vx
                     // Set delay timer = Vx.
                     // DT is set equal to the value of Vx.
-                    0x15 => self.DT = (vx as u16),
+                    0x15 => self.DT = vx as u16,
 
                     // Fx18 - LD ST, Vx
                     // Set sound timer = Vx.
                     // ST is set equal to the value of Vx.
-                    0x18 => self.ST = (vx as u16),
+                    0x18 => self.ST = vx as u16,
 
                     // Fx1E - ADD I, Vx
                     // Set I = I + Vx.
                     // The values of I and Vx are added, and the results are stored in I.
-                    0x1E => self.I += (vx as u16),
+                    0x1E => self.I += vx as u16,
 
                     // Fx29 - LD F, Vx
                     // Set I = location of sprite for digit Vx.
@@ -270,8 +344,11 @@ impl CPU {
                     0x65 => {
                         // TODO
                     }
+
+                    _ => (),
                 }
             }
+            _ => (),
         }
     }
 }
