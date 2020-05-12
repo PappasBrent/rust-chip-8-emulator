@@ -50,6 +50,27 @@ struct CPU {
 }
 
 impl CPU {
+    /// New CPU instance
+    pub fn new() -> CPU {
+        CPU {
+            memory: [0; 4096],
+            V: [0; 16],
+            I: 0,
+            DT: 0,
+            ST: 0,
+            PC: 0,
+            SP: 0,
+            stack: [0; 16],
+            keyboard: keyboard::Keyboard::new(),
+            display: display::Display::new(),
+        }
+    }
+
+    /// TODO
+    /// Reset all registers, timers, pointers, memory, and stack, set PC to 512 (0x200)
+    /// Clear the screen, initialize the font set in memory
+    pub fn reset() {}
+
     /// All instructions are two bytes long and are stored most-significant-byte first
     /// In memory, the first byte of each instruction should be located at an even addresses
     fn read_opcode(&self) -> u16 {
@@ -57,9 +78,15 @@ impl CPU {
     }
 
     /// Executes the current cycle
-    fn execute_cycle(&mut self) {
+    pub fn execute_cycle(&mut self) {
         let opcode = self.read_opcode();
         self.process_opcode(opcode);
+    }
+
+    /// Decreases all currently active timers by 1
+    pub fn decrement_timers(&mut self) {
+        self.DT = if self.DT > 0 { self.DT - 1 } else { self.DT };
+        self.ST = if self.ST > 0 { self.ST - 1 } else { self.ST };
     }
 
     /// Processes the given opcode
@@ -269,14 +296,22 @@ impl CPU {
                     // Skip next instruction if key with the value of Vx is pressed.
                     // Checks the keyboard, and if the key corresponding to the value of Vx is currently in the down position, PC is increased by 2.
                     0x9E => {
-                        // TODO
+                        self.PC += if self.keyboard.key_pressed(vx as usize) {
+                            2
+                        } else {
+                            0
+                        };
                     }
 
                     // ExA1 - SKNP Vx
                     // Checks the keyboard, and if the key corresponding to the value of Vx is currently in the up position, PC is increased by 2.
                     // Skip next instruction if key with the value of Vx is not pressed.
                     0xA1 => {
-                        // TODO
+                        self.PC += if !self.keyboard.key_pressed(vx as usize) {
+                            2
+                        } else {
+                            0
+                        };
                     }
 
                     _ => (),
@@ -334,16 +369,15 @@ impl CPU {
                     // Fx55 - LD [I], Vx
                     // Store registers V0 through Vx in memory starting at location I.
                     // The interpreter copies the values of registers V0 through Vx into memory, starting at the address in I.
-                    0x55 => {
-                        // TODO
-                    }
+                    0x55 => self.memory[(self.I as usize)..(self.I as usize + x + 1)]
+                        .copy_from_slice(&self.V[0..(x + 1)]),
 
                     // Fx65 - LD Vx, [I]
                     // Read registers V0 through Vx from memory starting at location I.
                     // The interpreter reads values from memory starting at location I into registers V0 through Vx.
-                    0x65 => {
-                        // TODO
-                    }
+                    0x65 => self.V[0..(x + 1)].copy_from_slice(
+                        &self.memory[(self.I as usize)..(self.I as usize + x + 1)],
+                    ),
 
                     _ => (),
                 }
