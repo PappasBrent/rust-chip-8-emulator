@@ -3,6 +3,25 @@
 mod display;
 mod keyboard;
 
+const FONT_SET: [u8; 80] = [
+    0xF0, 0x90, 0x90, 0x90, 0xF0, //  0
+    0x20, 0x60, 0x20, 0x20, 0x70, //  1
+    0xF0, 0x10, 0xF0, 0x80, 0xF0, //  2
+    0xF0, 0x10, 0xF0, 0x10, 0xF0, //  3
+    0x90, 0x90, 0xF0, 0x10, 0x10, //  4
+    0xF0, 0x80, 0xF0, 0x10, 0xF0, //  5
+    0xF0, 0x80, 0xF0, 0x90, 0xF0, //  6
+    0xF0, 0x10, 0x20, 0x40, 0x40, //  7
+    0xF0, 0x90, 0xF0, 0x90, 0xF0, //  8
+    0xF0, 0x90, 0xF0, 0x10, 0xF0, //  9
+    0xF0, 0x90, 0xF0, 0x90, 0x90, //  A
+    0xE0, 0x90, 0xE0, 0x90, 0xE0, //  B
+    0xF0, 0x80, 0x80, 0x80, 0xF0, //  C
+    0xE0, 0x90, 0x90, 0x90, 0xE0, //  D
+    0xF0, 0x80, 0xF0, 0x80, 0xF0, //  E
+    0xF0, 0x80, 0xF0, 0x80, 0x80, //  F
+];
+
 #[allow(non_snake_case)]
 struct CPU {
     /// CHIP-8 CPU
@@ -66,10 +85,21 @@ impl CPU {
         }
     }
 
-    /// TODO
-    /// Reset all registers, timers, pointers, memory, and stack, set PC to 512 (0x200)
-    /// Clear the screen, initialize the font set in memory
-    pub fn reset() {}
+    /// Resets all registers, clears the display, sets the PC to 0x200,
+    /// and loads the font set in memory
+    pub fn reset(&mut self) {
+        self.memory = [0; 4096];
+        self.V = [0; 16];
+        self.I = 0;
+        self.DT = 0;
+        self.ST = 0;
+        self.PC = 0x200;
+        self.SP = 0;
+        self.stack = [0; 16];
+        self.keyboard.reset();
+        self.display.cls();
+        self.memory[0..(0x200 as usize)].copy_from_slice(&FONT_SET);
+    }
 
     /// All instructions are two bytes long and are stored most-significant-byte first
     /// In memory, the first byte of each instruction should be located at an even addresses
@@ -281,13 +311,21 @@ impl CPU {
             }
 
             // Dxyn - DRW Vx, Vy, nibble
-            // Display n-byte sprite starting at memory location I at (Vx, Vy), set VF = collision.
-            // The interpreter reads n bytes from memory, starting at the address stored in I. These bytes are then displayed as sprites on screen at coordinates (Vx, Vy).
-            // Sprites are XORed onto the existing screen. If this causes any pixels to be erased, VF is set to 1, otherwise it is set to 0.
-            // If the sprite is positioned so part of it is outside the coordinates of the display, it wraps around to the opposite side of the screen.
-            // See instruction 8xy3 for more information on XOR, and section 2.4, Display, for more information on the Chip-8 screen and sprites.
+            // The interpreter reads n bytes from memory, starting at the address stored in I.
+            // These bytes are then displayed as sprites on screen at coordinates (Vx, Vy).
+            // Sprites are XORed onto the existing screen. If this causes any pixels to be erased,
+            // VF is set to 1, otherwise it is set to 0. If the sprite is positioned so part of it
+            // is outside the coordinates of the display, it wraps around to the opposite side of
+            // the screen.
             0xD000..=0xDFFF => {
-                // TODO
+                let collision = self.display.draw_sprite(
+                    &self.memory,
+                    n as usize,
+                    self.I as usize,
+                    vx as usize,
+                    vy as usize,
+                );
+                self.V[0xF_usize] = collision as u8;
             }
 
             0xE000..=0xEFFF => {
@@ -329,7 +367,13 @@ impl CPU {
                     // Wait for a key press, store the value of the key in Vx.
                     // All execution stops until a key is pressed, then the value of that key is stored in Vx.
                     0x08 => {
-                        // TODO
+                        self.PC -= 2;
+                        for &key in self.keyboard.keys().iter() {
+                            if key {
+                                self.V[x] = key as u8;
+                                self.PC += 2;
+                            }
+                        }
                     }
 
                     // Fx15 - LD DT, Vx
@@ -349,10 +393,11 @@ impl CPU {
 
                     // Fx29 - LD F, Vx
                     // Set I = location of sprite for digit Vx.
-                    // The value of I is set to the location for the hexadecimal sprite corresponding to the value of Vx. See section 2.4, Display, for more information on the Chip-8 hexadecimal font.
-                    0x29 => {
-                        // TODO
-                    }
+                    // The value of I is set to the location for the hexadecimal sprite
+                    // corresponding to the value of Vx.
+                    // See section 2.4, Display, for more information on the Chip-8 hexadecimal font.
+                    // 5 since font set sprites ar 5 bytes in width
+                    0x29 => self.I = (vx * 5) as u16,
 
                     // Fx33 - LD B, Vx
                     // Store BCD representation of Vx in memory locations I, I+1, and I+2.

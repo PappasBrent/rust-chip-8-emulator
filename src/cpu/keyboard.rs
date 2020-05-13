@@ -15,4 +15,10 @@ impl Keyboard {
     pub fn key_up(&mut self, i: usize) {
         self.keys[i] = false;
     }
+    pub fn reset(&mut self) {
+        self.keys = [false; 16];
+    }
+    pub fn keys(&self) -> [bool; 16] {
+        self.keys
+    }
 }
