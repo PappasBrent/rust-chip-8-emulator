@@ -1,5 +1,5 @@
-const WIDTH: usize = 64;
-const HEIGHT: usize = 32;
+pub const WIDTH: usize = 64;
+pub const HEIGHT: usize = 32;
 pub struct Display {
     screen: [u8; WIDTH * HEIGHT],
 }
@@ -12,26 +12,32 @@ impl Display {
     /// Returns a new, cleared display instance
     pub fn new() -> Display {
         Display {
-            screen: [0; WIDTH * HEIGHT],
+            screen: [0xff; WIDTH * HEIGHT],
         }
     }
+
+    pub fn screen_buffer(&mut self) -> &mut [u8; WIDTH * HEIGHT] {
+        &mut self.screen
+    }
+
     /// Clears the display
     pub fn cls(&mut self) {
         self.screen = [0; WIDTH * HEIGHT];
     }
-    /// The interpreter reads n bytes from memory, starting at the address stored in I.
+
+    /// The interpreter reads n bytes from memory, starting at the address stored in i.
     /// These bytes are then displayed as sprites on screen at coordinates (Vx, Vy).
     /// Sprites are XORed onto the existing screen. If this causes any pixels to be erased,
     /// VF is set to 1, otherwise it is set to 0. If the sprite is positioned so part of it
     /// is outside the coordinates of the display, it wraps around to the opposite side of
     /// the screen.
     /// Returns true if a collision was detected, false otherwise
-    pub fn draw_sprite(&mut self, memory: &[u8], n: usize, I: usize, vx: usize, vy: usize) -> bool {
+    pub fn draw_sprite(&mut self, memory: &[u8], n: usize, i: usize, vx: usize, vy: usize) -> bool {
         const BYTE_WIDTH: usize = 8;
         let mut res = false;
-        for (r, &byte) in memory[I..I + n].iter().enumerate() {
+        for (r, &byte) in memory[i..i + n].iter().enumerate() {
             for bit_index in 0..BYTE_WIDTH {
-                // I think this may actually be right...
+                // i think this may actually be right...
                 // ... not sure how to test though
                 let row = ((vy + r) * WIDTH) % (HEIGHT * WIDTH);
                 let col = (vx + bit_index) % WIDTH;

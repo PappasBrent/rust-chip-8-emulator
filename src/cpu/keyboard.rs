@@ -7,7 +7,7 @@ impl Keyboard {
         Keyboard { keys: [false; 16] }
     }
     pub fn key_pressed(&self, index: usize) -> bool {
-        true
+        self.keys[index]
     }
     pub fn key_down(&mut self, i: usize) {
         self.keys[i] = true;

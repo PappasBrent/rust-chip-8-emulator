@@ -1,7 +1,7 @@
 // Documentation: http://devernay.free.fr/hacks/chip8/C8TECH10.HTM#2.5
 
-mod display;
-mod keyboard;
+pub mod display;
+pub mod keyboard;
 
 const FONT_SET: [u8; 80] = [
     0xF0, 0x90, 0x90, 0x90, 0xF0, //  0
@@ -23,7 +23,7 @@ const FONT_SET: [u8; 80] = [
 ];
 
 #[allow(non_snake_case)]
-struct CPU {
+pub struct CPU {
     /// CHIP-8 CPU
 
     /// 4K of RAM
@@ -62,10 +62,10 @@ struct CPU {
 
     /// 16-key hexadecimal keyboard
     /// Not sure if this is the best way to implement this
-    keyboard: keyboard::Keyboard,
+    pub keyboard: keyboard::Keyboard,
 
     /// 64x32-pixel monochrome display
-    display: display::Display,
+    pub display: display::Display,
 }
 
 impl CPU {
@@ -98,7 +98,12 @@ impl CPU {
         self.stack = [0; 16];
         self.keyboard.reset();
         self.display.cls();
-        self.memory[0..(0x200 as usize)].copy_from_slice(&FONT_SET);
+        self.memory[0..80].copy_from_slice(&FONT_SET);
+    }
+
+    pub fn load_rom(&mut self, rom: &Vec<u8>) {
+        let rom_size = rom.len();
+        self.memory[0x200..0x200 + rom_size].copy_from_slice(rom.as_slice());
     }
 
     /// All instructions are two bytes long and are stored most-significant-byte first
@@ -213,7 +218,7 @@ impl CPU {
             // Set Vx = Vx + kk.
             // Adds the value kk to the value of register Vx, then stores the result in Vx.
             0x7000..=0x7FFF => {
-                self.V[x] += kk as u8;
+                self.V[x] = vx.wrapping_add(kk as u8);
             }
 
             0x8000..=0x8FFF => {
@@ -242,8 +247,9 @@ impl CPU {
                     // Set Vx = Vx + Vy, set VF = carry.
                     // The values of Vx and Vy are added together. If the result is greater than 8 bits (i.e., > 255,) VF is set to 1, otherwise 0. Only the lowest 8 bits of the result are kept, and stored in Vx.
                     4 => {
-                        self.V[0xF] = if vx > (255 - vy) { 1 } else { 0 };
-                        self.V[x] = (vx + vy) & 0x00FF;
+                        let (result, carry) = vx.overflowing_add(vy);
+                        self.V[0xF] = if carry { 1 } else { 0 };
+                        self.V[x] = result;
                     }
 
                     // 8xy5 - SUB Vx, Vy
