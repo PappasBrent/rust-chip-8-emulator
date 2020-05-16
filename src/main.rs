@@ -1,14 +1,19 @@
 use chip_8::cpu::display::{HEIGHT, WIDTH};
 use minifb::{Key, KeyRepeat, Window, WindowOptions};
 fn main() {
+    // TODO: Check that arguments were passed correctly
+    let game_path = std::env::args().nth(1).unwrap();
+
     let mut cpu = chip_8::cpu::CPU::new();
     cpu.reset();
 
-    let rom = std::fs::read(std::path::Path::new("./c8games/PONG2")).unwrap();
+    let rom = std::fs::read(std::path::Path::new(&game_path)).unwrap();
 
     cpu.load_rom(&rom);
 
-    const SCALE: usize = 7;
+    const COLOR: u32 = 0x00FFFF;
+    const NO_COLOR: u32 = 0x333333;
+    const SCALE: usize = 15;
     const SCREEN_WIDTH: usize = WIDTH * SCALE;
     const SCREEN_HEIGHT: usize = HEIGHT * SCALE;
     let mut buffer: Vec<u32> = vec![0; SCREEN_WIDTH * SCREEN_HEIGHT];
@@ -24,28 +29,11 @@ fn main() {
     });
 
     // Limit to max ~60 fps update rate
-    window.limit_update_rate(Some(std::time::Duration::from_micros(5000)));
+    // window.limit_update_rate(Some(std::time::Duration::from_micros(5000)));
+    window.limit_update_rate(Some(std::time::Duration::from_millis(1000 / 60)));
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
-        // Update game
-        cpu.execute_cycle();
-        cpu.decrement_timers();
-
-        // Draw pixels
-        // TODO: Optimize to work better with scales != 1
-        for (i, &val) in cpu.display.screen_buffer().iter().enumerate() {
-            for r in 0..SCALE {
-                let row_offset = ((i / WIDTH) * SCALE + r) * SCREEN_WIDTH;
-                for c in 0..SCALE {
-                    let col_offset = (i % WIDTH) * SCALE + c;
-                    buffer[row_offset + col_offset] = if val & 1 == 1 { 0x00FF00 } else { 0 };
-                }
-            }
-            // buffer[i] = if val & 1 == 1 { 0x00FF00 } else { 0 };
-        }
-
-        // NOTE: Keys assume QWERTY layout! Changing to Colemak doesn't change this!
-
+        // Get input
         for &key in window.get_keys_released().unwrap_or(vec![]).iter() {
             let btn: usize = match key {
                 Key::Key1 => 1,
@@ -100,6 +88,26 @@ fn main() {
                 cpu.keyboard.key_down(btn);
             }
         }
+
+        // Update game
+        cpu.execute_cycle();
+        cpu.decrement_timers();
+
+        // Draw pixels
+        for (i, &val) in cpu.display.screen_buffer().iter().enumerate() {
+            for r in 0..SCALE {
+                let row_offset = ((i / WIDTH) * SCALE + r) * SCREEN_WIDTH;
+                let col_start = (i % WIDTH) * SCALE;
+                let col_end = (i % WIDTH) * SCALE + SCALE;
+                buffer[row_offset + col_start..row_offset + col_end].copy_from_slice(if val == 1 {
+                    &[COLOR; SCALE]
+                } else {
+                    &[NO_COLOR; SCALE]
+                });
+            }
+        }
+
+        // NOTE: Keys assume QWERTY layout! Changing to Colemak doesn't change this!
 
         // We unwrap here as we want this code to exit if it fails. Real applications may want to handle this in a different way
         window

@@ -211,14 +211,14 @@ impl CPU {
             // Set Vx = kk.
             // The interpreter puts the value kk into register Vx.
             0x6000..=0x6FFF => {
-                self.V[x] = kk as u8;
+                self.V[x] = kk;
             }
 
             // 7xkk - ADD Vx, byte
             // Set Vx = Vx + kk.
             // Adds the value kk to the value of register Vx, then stores the result in Vx.
             0x7000..=0x7FFF => {
-                self.V[x] = vx.wrapping_add(kk as u8);
+                self.V[x] = vx.wrapping_add(kk);
             }
 
             0x8000..=0x8FFF => {
@@ -257,7 +257,7 @@ impl CPU {
                     // If Vx > Vy, then VF is set to 1, otherwise 0. Then Vy is subtracted from Vx, and the results stored in Vx.
                     5 => {
                         let (res, overflow) = vx.overflowing_sub(vy);
-                        self.V[0xF] = if overflow { 1 } else { 0 };
+                        self.V[0xF] = if !overflow { 1 } else { 0 };
                         self.V[x] = res;
                     }
                     // 8xy6 - SHR Vx {, Vy}
@@ -273,7 +273,7 @@ impl CPU {
                     // If Vy > Vx, then VF is set to 1, otherwise 0. Then Vx is subtracted from Vy, and the results stored in Vx.
                     7 => {
                         let (res, overflow) = vy.overflowing_sub(vx);
-                        self.V[0xF] = if overflow { 1 } else { 0 };
+                        self.V[0xF] = if !overflow { 1 } else { 0 };
                         self.V[x] = res;
                     }
 
